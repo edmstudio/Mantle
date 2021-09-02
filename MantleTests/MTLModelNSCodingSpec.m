@@ -63,19 +63,28 @@ describe(@"archiving", ^{
 		expect(error).to(beNil());
 
 		archiveAndUnarchiveModel = [^{
-			NSError *error = nil;
-			NSData *data = [NSKeyedArchiver archivedDataWithRootObject:model requiringSecureCoding:NO error:&error];
-			expect(data).notTo(beNil());
-			expect(error).to(beNil());
+			if (@available(macOS 10.13, ios 11.0, watchos 4.0, tvOS 11.0, *)) {
+				NSError *error = nil;
+				NSData *data = [NSKeyedArchiver archivedDataWithRootObject:model requiringSecureCoding:NO error:&error];
+				expect(data).notTo(beNil());
+				expect(error).to(beNil());
+				
+				NSKeyedUnarchiver *unarchiver = [[NSKeyedUnarchiver alloc] initForReadingFromData:data error:&error];
+				unarchiver.requiresSecureCoding = NO;
+				MTLTestModel *unarchivedModel = [unarchiver decodeObjectForKey:NSKeyedArchiveRootObjectKey];
+				expect(unarchivedModel).notTo(beNil());
+				expect(error).to(beNil());
 
-			NSKeyedUnarchiver *unarchiver = [[NSKeyedUnarchiver alloc] initForReadingFromData:data error:&error];
-			unarchiver.requiresSecureCoding = NO;
-			MTLTestModel *unarchivedModel = [unarchiver decodeObjectForKey:NSKeyedArchiveRootObjectKey];
-			
-			expect(unarchivedModel).notTo(beNil());
-			expect(error).to(beNil());
+				return unarchivedModel;
+			} else {
+				NSData *data = [NSKeyedArchiver archivedDataWithRootObject:model];
+				expect(data).notTo(beNil());
 
-			return unarchivedModel;
+				MTLTestModel *unarchivedModel = [NSKeyedUnarchiver unarchiveObjectWithData:data];
+				expect(unarchivedModel).notTo(beNil());
+
+				return unarchivedModel;
+			}
 		} copy];
 	});
 
@@ -103,16 +112,24 @@ describe(@"archiving", ^{
 
 	it(@"should archive conditional properties if encoded elsewhere", ^{
 		model.weakModel = emptyModel;
-		NSError *error = nil;
 
-		NSData *data = [NSKeyedArchiver archivedDataWithRootObject:@[ model, emptyModel ] requiringSecureCoding:NO error:&error];
-		expect(data).notTo(beNil());
-		expect(error).to(beNil());
+		NSArray *objects = nil;
+		if (@available(macOS 10.13, ios 11.0, watchos 4.0, tvOS 11.0, *)) {
+			NSError *error = nil;
+			NSData *data = [NSKeyedArchiver archivedDataWithRootObject:@[ model, emptyModel ] requiringSecureCoding:NO error:&error];
+			expect(data).notTo(beNil());
+			expect(error).to(beNil());
 
-		NSKeyedUnarchiver *unarchiver = [[NSKeyedUnarchiver alloc] initForReadingFromData:data error:&error];
-		unarchiver.requiresSecureCoding = NO;
-		NSArray *objects = [unarchiver decodeObjectForKey:NSKeyedArchiveRootObjectKey];
-		expect(error).to(beNil());
+			NSKeyedUnarchiver *unarchiver = [[NSKeyedUnarchiver alloc] initForReadingFromData:data error:&error];
+			unarchiver.requiresSecureCoding = NO;
+			objects = [unarchiver decodeObjectForKey:NSKeyedArchiveRootObjectKey];
+			expect(error).to(beNil());
+		} else {
+			NSData *data = [NSKeyedArchiver archivedDataWithRootObject:@[ model, emptyModel ]];
+			expect(data).notTo(beNil());
+
+			objects = [NSKeyedUnarchiver unarchiveObjectWithData:data];
+		}
 		expect(@(objects.count)).to(equal(@2));
 		expect(objects[1]).to(equal(emptyModel));
 
@@ -123,19 +140,29 @@ describe(@"archiving", ^{
 
 	it(@"should invoke custom decoding logic", ^{
 		MTLTestModel.modelVersion = 0;
-		NSError *error = nil;
 
-		NSData *data = [NSKeyedArchiver archivedDataWithRootObject:model requiringSecureCoding:NO error:&error];
-		expect(data).notTo(beNil());
-		expect(error).to(beNil());
+		MTLTestModel *unarchivedModel = nil;
+		if (@available(macOS 10.13, ios 11.0, watchos 4.0, tvOS 11.0, macCatalyst 13.0, *)) {
+			NSError *error = nil;
+			NSData *data = [NSKeyedArchiver archivedDataWithRootObject:model requiringSecureCoding:NO error:&error];
+			expect(data).notTo(beNil());
+			expect(error).to(beNil());
 
-		MTLTestModel.modelVersion = 1;
+			MTLTestModel.modelVersion = 1;
 
-		NSKeyedUnarchiver *unarchiver = [[NSKeyedUnarchiver alloc] initForReadingFromData:data error:&error];
-		unarchiver.requiresSecureCoding = NO;
-		MTLTestModel *unarchivedModel = [unarchiver decodeObjectForKey:NSKeyedArchiveRootObjectKey];
+			NSKeyedUnarchiver *unarchiver = [[NSKeyedUnarchiver alloc] initForReadingFromData:data error:&error];
+			unarchiver.requiresSecureCoding = NO;
+			unarchivedModel = [unarchiver decodeObjectForKey:NSKeyedArchiveRootObjectKey];
+			expect(error).to(beNil());
+		} else {
+			NSData *data = [NSKeyedArchiver archivedDataWithRootObject:model];
+			expect(data).notTo(beNil());
+
+			MTLTestModel.modelVersion = 1;
+
+			unarchivedModel = [NSKeyedUnarchiver unarchiveObjectWithData:data];
+		}
 		expect(unarchivedModel).notTo(beNil());
-		expect(error).to(beNil());
 		expect(unarchivedModel.name).to(equal(@"M: foobar"));
 		expect(@(unarchivedModel.count)).to(equal(@5));
 	});
@@ -144,15 +171,20 @@ describe(@"archiving", ^{
 		NSURL *archiveURL = [[NSBundle bundleForClass:self.class] URLForResource:@"MTLTestModel-OldArchive" withExtension:@"plist"];
 		expect(archiveURL).notTo(beNil());
 		expect(archiveURL.path).notTo(beNil());
-
-		NSError *error = nil;
-		NSData *fileData = [NSData dataWithContentsOfFile:(NSString *)archiveURL.path];
-		expect(fileData).notTo(beNil());
-		NSKeyedUnarchiver *unarchiver = [[NSKeyedUnarchiver alloc] initForReadingFromData:fileData error:&error];
-		unarchiver.requiresSecureCoding = NO;
-		MTLTestModel *unarchivedModel = [unarchiver decodeObjectForKey:NSKeyedArchiveRootObjectKey];
+		
+		MTLTestModel *unarchivedModel = nil;
+		if (@available(macOS 10.13, ios 11.0, watchos 4.0, tvOS 11.0, *)) {
+			NSError *error = nil;
+			NSData *fileData = [NSData dataWithContentsOfFile:(NSString *)archiveURL.path];
+			expect(fileData).notTo(beNil());
+			NSKeyedUnarchiver *unarchiver = [[NSKeyedUnarchiver alloc] initForReadingFromData:fileData error:&error];
+			unarchiver.requiresSecureCoding = NO;
+			unarchivedModel = [unarchiver decodeObjectForKey:NSKeyedArchiveRootObjectKey];
+			expect(error).to(beNil());
+		} else {
+			unarchivedModel = [NSKeyedUnarchiver unarchiveObjectWithFile:(NSString *)archiveURL.path];
+		}
 		expect(unarchivedModel).notTo(beNil());
-		expect(error).to(beNil());
 
 		NSDictionary *expectedValues = @{
 			@"name": @"foobar",
