@@ -63,11 +63,17 @@ describe(@"archiving", ^{
 		expect(error).to(beNil());
 
 		archiveAndUnarchiveModel = [^{
-			NSData *data = [NSKeyedArchiver archivedDataWithRootObject:model];
+			NSError *error = nil;
+			NSData *data = [NSKeyedArchiver archivedDataWithRootObject:model requiringSecureCoding:NO error:&error];
 			expect(data).notTo(beNil());
+			expect(error).to(beNil());
 
-			MTLTestModel *unarchivedModel = [NSKeyedUnarchiver unarchiveObjectWithData:data];
+			NSKeyedUnarchiver *unarchiver = [[NSKeyedUnarchiver alloc] initForReadingFromData:data error:&error];
+			unarchiver.requiresSecureCoding = NO;
+			MTLTestModel *unarchivedModel = [unarchiver decodeObjectForKey:NSKeyedArchiveRootObjectKey];
+			
 			expect(unarchivedModel).notTo(beNil());
+			expect(error).to(beNil());
 
 			return unarchivedModel;
 		} copy];
@@ -97,11 +103,16 @@ describe(@"archiving", ^{
 
 	it(@"should archive conditional properties if encoded elsewhere", ^{
 		model.weakModel = emptyModel;
+		NSError *error = nil;
 
-		NSData *data = [NSKeyedArchiver archivedDataWithRootObject:@[ model, emptyModel ]];
+		NSData *data = [NSKeyedArchiver archivedDataWithRootObject:@[ model, emptyModel ] requiringSecureCoding:NO error:&error];
 		expect(data).notTo(beNil());
+		expect(error).to(beNil());
 
-		NSArray *objects = [NSKeyedUnarchiver unarchiveObjectWithData:data];
+		NSKeyedUnarchiver *unarchiver = [[NSKeyedUnarchiver alloc] initForReadingFromData:data error:&error];
+		unarchiver.requiresSecureCoding = NO;
+		NSArray *objects = [unarchiver decodeObjectForKey:NSKeyedArchiveRootObjectKey];
+		expect(error).to(beNil());
 		expect(@(objects.count)).to(equal(@2));
 		expect(objects[1]).to(equal(emptyModel));
 
@@ -112,14 +123,19 @@ describe(@"archiving", ^{
 
 	it(@"should invoke custom decoding logic", ^{
 		MTLTestModel.modelVersion = 0;
+		NSError *error = nil;
 
-		NSData *data = [NSKeyedArchiver archivedDataWithRootObject:model];
+		NSData *data = [NSKeyedArchiver archivedDataWithRootObject:model requiringSecureCoding:NO error:&error];
 		expect(data).notTo(beNil());
+		expect(error).to(beNil());
 
 		MTLTestModel.modelVersion = 1;
 
-		MTLTestModel *unarchivedModel = [NSKeyedUnarchiver unarchiveObjectWithData:data];
+		NSKeyedUnarchiver *unarchiver = [[NSKeyedUnarchiver alloc] initForReadingFromData:data error:&error];
+		unarchiver.requiresSecureCoding = NO;
+		MTLTestModel *unarchivedModel = [unarchiver decodeObjectForKey:NSKeyedArchiveRootObjectKey];
 		expect(unarchivedModel).notTo(beNil());
+		expect(error).to(beNil());
 		expect(unarchivedModel.name).to(equal(@"M: foobar"));
 		expect(@(unarchivedModel.count)).to(equal(@5));
 	});
@@ -127,9 +143,16 @@ describe(@"archiving", ^{
 	it(@"should unarchive an external representation from the old model format", ^{
 		NSURL *archiveURL = [[NSBundle bundleForClass:self.class] URLForResource:@"MTLTestModel-OldArchive" withExtension:@"plist"];
 		expect(archiveURL).notTo(beNil());
+		expect(archiveURL.path).notTo(beNil());
 
-		MTLTestModel *unarchivedModel = [NSKeyedUnarchiver unarchiveObjectWithFile:archiveURL.path];
+		NSError *error = nil;
+		NSData *fileData = [NSData dataWithContentsOfFile:(NSString *)archiveURL.path];
+		expect(fileData).notTo(beNil());
+		NSKeyedUnarchiver *unarchiver = [[NSKeyedUnarchiver alloc] initForReadingFromData:fileData error:&error];
+		unarchiver.requiresSecureCoding = NO;
+		MTLTestModel *unarchivedModel = [unarchiver decodeObjectForKey:NSKeyedArchiveRootObjectKey];
 		expect(unarchivedModel).notTo(beNil());
+		expect(error).to(beNil());
 
 		NSDictionary *expectedValues = @{
 			@"name": @"foobar",
